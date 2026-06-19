@@ -1,0 +1,67 @@
+version: '3.9'
+
+services:
+  # ─── MySQL Database ─────────────────────────────────────────────────
+  mysql:
+    image: mysql:8.0
+    container_name: dsa_mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_DATABASE: dsa_db
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-rootpassword}
+      MYSQL_USER: ${MYSQL_USER:-dsauser}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-dsapassword}
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+    networks:
+      - dsa_network
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "--password=${MYSQL_ROOT_PASSWORD:-rootpassword}"]
+      interval: 15s
+      timeout: 5s
+      retries: 8
+      start_period: 30s
+
+  # ─── Spring Boot Backend ─────────────────────────────────────────────
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: dsa_backend
+    restart: unless-stopped
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:mysql://mysql:3306/dsa_db?useSSL=false&serverTimezone=UTC&allowPublicKeyRetrieval=true
+      SPRING_DATASOURCE_USERNAME: ${MYSQL_USER:-dsauser}
+      SPRING_DATASOURCE_PASSWORD: ${MYSQL_PASSWORD:-dsapassword}
+      APP_JWT_SECRET: ${JWT_SECRET:-403f82de19504c5e3d7a8e7b6d5c4b3a2a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6}
+      APP_JWT_EXPIRATIONMS: 86400000
+    ports:
+      - "8080:8080"
+    depends_on:
+      mysql:
+        condition: service_healthy
+    networks:
+      - dsa_network
+
+  # ─── React Frontend (Nginx) ──────────────────────────────────────────
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: dsa_frontend
+    restart: unless-stopped
+    ports:
+      - "3000:80"
+    depends_on:
+      - backend
+    networks:
+      - dsa_network
+
+volumes:
+  mysql_data:
+
+networks:
+  dsa_network:
+    driver: bridge
